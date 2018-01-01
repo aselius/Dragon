@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+from __future__ import print_function
 import rospy
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
@@ -38,15 +38,31 @@ class WaypointUpdater(object):
 
         # TODO: Add other member variables you need below
 
+        # DRAGON: Lets store the current x and y coordinates for now
+        self.cur_x = 0.0
+        self.cur_y = 0.0
+
+        # DRAGON: The base waypoints. We receive them once from waypoint_loader node
+        self.base_waypoints = None
+
         rospy.spin()
 
     def pose_cb(self, msg):
-        # TODO: Implement
-        pass
+        rospy.loginfo("DRAGON: Received current pose message.")
+        #rospy.logerr(msg)
+
+        # DRAGON: Update the current x and y coordinates, we can ignore other values for now
+        self.cur_x = msg.pose.position.x
+        self.cur_y = msg.pose.position.y
+        rospy.logerr("X: %f, Y: %f", self.cur_x, self.cur_y)
+        rospy.logerr(self.cur_y)
 
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
+        rospy.loginfo("DRAGON: Received the base waypoints messages")
+
+        # DRAGON: Store it in local variable, ignore header information for now
+        self.base_waypoints = waypoints.waypoints
+
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
