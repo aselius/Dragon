@@ -6,6 +6,9 @@ from styx_msgs.msg import Lane, Waypoint
 
 import math
 
+from dragon_util import DragonUtil
+from tf.transformations import euler_from_quaternion
+
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
 
@@ -38,30 +41,78 @@ class WaypointUpdater(object):
 
         # TODO: Add other member variables you need below
 
-        # DRAGON: Lets store the current x and y coordinates for now
-        self.cur_x = 0.0
-        self.cur_y = 0.0
-
-        # DRAGON: The base waypoints. We receive them once from waypoint_loader node
-        self.base_waypoints = None
+        # DRAGON:
+        self.util = DragonUtil()
+        self.base_waypoints = [] # The modified waypoint data for processing
+        self.orig_waypoints = [] # The original waypoint messages
+        self.last_wp_index = 0
 
         rospy.spin()
 
     def pose_cb(self, msg):
         rospy.loginfo("DRAGON: Received current pose message.")
-        #rospy.logerr(msg)
+        euler = euler_from_quaternion([msg.pose.orientation.x, msg.pose.orientation.y,
+                                       msg.pose.orientation.z, msg.pose.orientation.w])
+        rospy.logerr(euler)
 
-        # DRAGON: Update the current x and y coordinates, we can ignore other values for now
-        self.cur_x = msg.pose.position.x
-        self.cur_y = msg.pose.position.y
-        rospy.logerr("X: %f, Y: %f", self.cur_x, self.cur_y)
-        rospy.logerr(self.cur_y)
+        # DRAGON:
+        cur_x = msg.pose.position.x
+        cur_y = msg.pose.position.y
+        rospy.logerr("X: %f, Y: %f", cur_x, cur_y)
+        nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints, self.last_wp_index)
+
+        # Now publish the final way points
+        lane_msg = Lane()
+        for idx in range(nxt_wp_idx, nxt_wp_idx+LOOKAHEAD_WPS):
+            lane_msg.waypoints.append(self.orig_waypoints[idx])
+
+        rospy.logerr("Publishing lane message starting from: %d, %d",
+                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
+                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
+        rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
+                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
+        self.final_waypoints_pub.publish(lane_msg)
+
+        # Store the last waypoint index to narrow down the search
+        self.last_wp_index = nxt_wp_idx
 
     def waypoints_cb(self, waypoints):
         rospy.loginfo("DRAGON: Received the base waypoints messages")
+        #rospy.logerr(waypoints)
+
 
         # DRAGON: Store it in local variable, ignore header information for now
-        self.base_waypoints = waypoints.waypoints
+
+        # DRAGON: Fill up the necessay information from received message
+
+
+        for waypoint in waypoints.waypoints:
+            #rospy.logerr(waypoint)
+            euler = euler_from_quaternion([waypoint.pose.pose.orientation.x, waypoint.pose.pose.orientation.y,
+                                           waypoint.pose.pose.orientation.z, waypoint.pose.pose.orientation.w])
+            #rospy.logerr("Euler: %s", str(euler))
+
+            self.base_waypoints.append({'x': waypoint.pose.pose.position.x, 'y':waypoint.pose.pose.position.y,
+                                        'angle':euler[2],'twist_x': waypoint.twist.twist.linear.x})
+            self.orig_waypoints.append(waypoint)
+        #for wp in self.base_waypoints:
+        total_way_points = len(self.base_waypoints)
+        prev_s_dist = 0
+        for index in range(total_way_points):
+            wp = self.base_waypoints[index]
+
+            next_wp_index = index
+            if next_wp_index == total_way_points:
+                next_wp_index = 0
+            #fn = util.getFrenet(wp['x'], wp['y'], wp['angle'], self.base_waypoints, next_wp_index, prev_s_dist)
+            fn = self.util.getFrenet(wp['x'], wp['y'], wp['angle'], self.base_waypoints, next_wp_index, prev_s_dist)
+            prev_s_dist = fn['s']
+            rospy.logerr(wp)
+            rospy.logerr(fn)
+            #pass
+        rospy.logerr("All done")
+
+
 
 
     def traffic_cb(self, msg):
