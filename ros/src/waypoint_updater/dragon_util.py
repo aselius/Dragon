@@ -11,13 +11,30 @@ class DragonUtil(object):
     def distance(self, x1, y1, x2, y2):
         return math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1))
 
-    def closestWaypoint(self, x, y, waypoints, start_idx=0):
+    def closestWaypoint(self, x, y, waypoints, start_idx=0, lookup_range=None):
         closestLen = 100000 #large number
         closest_waypoint_index = -1
+        total_waypoints = len(waypoints)
 
-        end_idx = start_idx + 100 # Look in only next 100 waypoints, to speed up things
-        if end_idx > len(waypoints):
-            end_idx = len(waypoints)
+
+        if start_idx < 0 or start_idx >= total_waypoints:
+            start_idx = 0
+            lookup_range = None # find in whole range
+
+        if start_idx > 100:
+            start_idx -= 100
+        else:
+            start_idx = 0
+            lookup_range = None
+
+        if lookup_range is not None:
+            end_idx = start_idx + lookup_range # Look in only next 100 waypoints, to speed up things
+        else:
+            end_idx = total_waypoints
+
+        if end_idx > total_waypoints:
+            end_idx = total_waypoints
+            start_idx = 0
 
         for index in range(start_idx, end_idx ):
             wp = waypoints[index]
@@ -31,7 +48,8 @@ class DragonUtil(object):
 
     def nextWaypoint(self, x, y, theta, waypoints, start_idx=0):
 
-        closest_waypoint_index = self.closestWaypoint(x,y, waypoints, start_idx=start_idx)
+        closest_waypoint_index = self.closestWaypoint(x,y, waypoints, start_idx=start_idx, lookup_range=200)
+        #closest_waypoint_index = self.closestWaypoint(x, y, waypoints, start_idx=start_idx)
 
         if closest_waypoint_index == -1:
             assert(False)
@@ -49,7 +67,7 @@ class DragonUtil(object):
         if angle > math.pi/4:
             closest_waypoint_index += 1
             if closest_waypoint_index == len(waypoints):
-                closest_waypoint_index = -1
+                closest_waypoint_index = 0
 
 
         return closest_waypoint_index

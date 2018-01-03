@@ -60,11 +60,30 @@ class WaypointUpdater(object):
         cur_y = msg.pose.position.y
         rospy.logerr("X: %f, Y: %f", cur_x, cur_y)
         nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints, self.last_wp_index)
+        #nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints)
+
+        if nxt_wp_idx < 0 or nxt_wp_idx >= len(self.orig_waypoints):
+            rospy.logerr("Cannot find the next waypoint index: %d!", nxt_wp_idx)
+            return
 
         # Now publish the final way points
         lane_msg = Lane()
-        for idx in range(nxt_wp_idx, nxt_wp_idx+LOOKAHEAD_WPS):
+        last_idx = nxt_wp_idx+LOOKAHEAD_WPS
+
+        circular_leftover = None
+        # We have to circle around!
+        if last_idx >= len(self.orig_waypoints):
+            circular_leftover = last_idx - len(self.orig_waypoints)
+            last_idx = len(self.orig_waypoints) - 1
+
+        for idx in range(nxt_wp_idx, last_idx):
             lane_msg.waypoints.append(self.orig_waypoints[idx])
+        # For circling around
+        if circular_leftover is not None:
+            rospy.logerr("Circling around for : %d", circular_leftover)
+            for idx in range(circular_leftover):
+                lane_msg.waypoints.append(self.orig_waypoints[idx])
+
 
         rospy.logerr("Publishing lane message starting from: %d, %d",
                      self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
