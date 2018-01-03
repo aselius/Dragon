@@ -7,6 +7,7 @@ from geometry_msgs.msg import TwistStamped
 import math
 
 from twist_controller import Controller
+from yaw_controller import YawController
 
 '''
 You can build this node only after you have built (or partially built) the `waypoint_updater` node.
@@ -55,10 +56,55 @@ class DBWNode(object):
 
         # TODO: Create `TwistController` object
         # self.controller = TwistController(<Arguments you wish to provide>)
+        #Dragon
+        self.yaw_controller = YawController(wheel_base, steer_ratio, 0, max_lat_accel, max_steer_angle)
+
+        self.throttle = 0.0
+        self.steer = 0.0
+        self.brake = 0.0
 
         # TODO: Subscribe to all the topics you need to
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cb)
+        rospy.Subscriber('/current_velocity',  TwistStamped, self.current_velocity_cb)
+
+
+
 
         self.loop()
+
+    # Dragon: Call back for receiving current velocity
+    def current_velocity_cb(self, command):
+        rospy.logerr("Got current velocity command")
+        rospy.logerr(command)
+        self.actual_linear_vel = command.twist.linear.x
+        self.actual_angular_vel = command.twist.angular.z
+
+    # Dragon: Call back for receiving twist command
+    def twist_cb(self, command):
+        rospy.logerr("Got twist command")
+        rospy.logerr(command)
+        self.desired_linear_vel = command.twist.linear.x
+        self.desired_angular_vel = command.twist.angular.z
+
+        diff_lin = self.actual_linear_vel - self.desired_linear_vel
+        diff_ang = self.actual_angular_vel - self.desired_angular_vel
+        alpha = -0.4
+        self.throttle = alpha * diff_lin
+        self.brake = 0.0
+        if self.throttle > 1.0:
+            self.throttle = 1.0
+        if self.throttle < -1.0:
+            self.throttle = -1.0
+        # If its negative throttle, then reverse
+        if self.throttle < 0:
+            self.brake = 5*self.throttle
+            self.throttle = 0.0
+
+        #self.yaw_controller.get_angle(diff_ang)
+        self.steer = self.yaw_controller.get_steering(self.desired_linear_vel, self.desired_angular_vel, self.actual_linear_vel)
+
+
+
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
@@ -72,6 +118,10 @@ class DBWNode(object):
             #                                                     <any other argument you need>)
             # if <dbw is enabled>:
             #   self.publish(throttle, brake, steer)
+            #rospy.logerr("Publishing the twist command")
+            rospy.logerr("Twist Command: %f, %f, %f", self.throttle, self.brake, self.steer)
+            #self.publish(0.1, 0.0, 1.0)
+            self.publish(self.throttle, self.brake, self.steer)
             rate.sleep()
 
     def publish(self, throttle, brake, steer):
