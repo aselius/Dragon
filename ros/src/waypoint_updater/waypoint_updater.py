@@ -8,6 +8,7 @@ import math
 
 from dragon_util import DragonUtil
 from tf.transformations import euler_from_quaternion
+import copy
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -77,12 +78,21 @@ class WaypointUpdater(object):
             last_idx = len(self.orig_waypoints) - 1
 
         for idx in range(nxt_wp_idx, last_idx):
-            lane_msg.waypoints.append(self.orig_waypoints[idx])
+            new_waypoint = copy.deepcopy(self.orig_waypoints[idx])
+            lane_msg.waypoints.append(new_waypoint)
+#            rospy.logerr("Original waypoint: %s", self.orig_waypoints[idx])
+#            rospy.logerr("Coppied waypoint: %s", lane_msg.waypoints[-1])
         # For circling around
         if circular_leftover is not None:
             rospy.logerr("Circling around for : %d", circular_leftover)
             for idx in range(circular_leftover):
-                lane_msg.waypoints.append(self.orig_waypoints[idx])
+                new_waypoint = copy.deepcopy(self.orig_waypoints[idx])
+                lane_msg.waypoints.append(new_waypoint)
+#        for waypoint in lane_msg.waypoints:
+#            sp = waypoint.twist.twist.linear.x
+#            sp *= 1.5
+#            waypoint.twist.twist.linear.x = 22.
+#            rospy.logerr("Modifoed speed: %f", sp)
 
 
         rospy.logerr("Publishing lane message starting from: %d, %d",
