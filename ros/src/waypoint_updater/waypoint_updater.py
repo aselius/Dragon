@@ -2,13 +2,13 @@
 from __future__ import print_function
 import rospy
 from geometry_msgs.msg import PoseStamped
-from styx_msgs.msg import Lane, Waypoint
+from styx_msgs.msg import Lane, Waypoint, TrafficLight, TrafficLightArray
 
 import math
 
 from dragon_util import DragonUtil
 from tf.transformations import euler_from_quaternion
-import copy
+import heapq
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -26,6 +26,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+MAX_ACCEL = 9.5
 
 
 class WaypointUpdater(object):
@@ -34,6 +35,7 @@ class WaypointUpdater(object):
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
 
@@ -47,14 +49,43 @@ class WaypointUpdater(object):
         self.base_waypoints = [] # The modified waypoint data for processing
         self.orig_waypoints = [] # The original waypoint messages
         self.last_wp_index = 0
+        self.traffic_lights = [] # Latest state of traffic lights
 
         rospy.spin()
 
+
+    def next_light_state(self, nxt_wp_idx, search_range):
+        lights = self.traffic_lights
+        candidate_idxs = []
+        nxt_wp_pos = self.orig_waypoints[nxt_wp_idx].pose.pose.position
+        for i in range(len(lights)):
+            light_pos = lights[i].pose.pose.position
+            straight_dist = self.util.distance(nxt_wp_pos.x, nxt_wp_pos.y, light_pos.x, light_pos.y)
+            
+            if straight_dist <= search_range:
+                light_wp_idx = self.util.closestWaypoint(light_pos.x, light_pos.y, self.base_waypoints)
+                light_wp_pos = self.orig_waypoints[light_wp_idx].pose.pose.position
+                light_dist = self.util.path_len(nxt_wp_idx, light_wp_idx, self.orig_waypoints)
+                rospy.logerr('Traffic light number %d at x:%d y:%d %dm away snapto:(%d %f %f) pathlen: %f.',
+                             i, light_pos.x, light_pos.y, straight_dist, light_wp_idx, light_wp_pos.x,
+                             light_wp_pos.y, light_dist)
+                if light_dist <= search_range:
+                    rospy.logerr('Found traffic light number %d at x:%d y:%d state:%d',
+                                 i, light_pos.x, light_pos.y, lights[i].state)
+                    heapq.heappush(candidate_idxs, (light_dist, i))
+        if len(candidate_idxs):
+            light_idx = heapq.heappop(candidate_idxs)[1]
+            rospy.logerr('Picked traffic light %d', light_idx)
+            return lights[light_idx].state
+        else:
+            return 4
+        
+
     def pose_cb(self, msg):
-        rospy.loginfo("DRAGON: Received current pose message.")
+#        rospy.loginfo("DRAGON: Received current pose message.")
         euler = euler_from_quaternion([msg.pose.orientation.x, msg.pose.orientation.y,
                                        msg.pose.orientation.z, msg.pose.orientation.w])
-        rospy.logerr(euler)
+#        rospy.logerr(euler)
 
         # DRAGON:
         cur_x = msg.pose.position.x
@@ -69,37 +100,28 @@ class WaypointUpdater(object):
 
         # Now publish the final way points
         lane_msg = Lane()
-        last_idx = nxt_wp_idx+LOOKAHEAD_WPS
+        last_idx = (nxt_wp_idx+LOOKAHEAD_WPS) % len(self.orig_waypoints)
 
+        stopin_time = self.base_waypoints[nxt_wp_idx]['twist_x'] / MAX_ACCEL
+        stopin_dist = MAX_ACCEL * (stopin_time ** 2) / 2.
+        
         circular_leftover = None
-        # We have to circle around!
-        if last_idx >= len(self.orig_waypoints):
-            circular_leftover = last_idx - len(self.orig_waypoints)
-            last_idx = len(self.orig_waypoints) - 1
+        tl_state = self.next_light_state(nxt_wp_idx, max(stopin_dist, 30))
 
-        for idx in range(nxt_wp_idx, last_idx):
-            new_waypoint = copy.deepcopy(self.orig_waypoints[idx])
+        for idx in range(LOOKAHEAD_WPS):
+            waypoint_idx = (nxt_wp_idx+idx) % len(self.orig_waypoints)
+            new_waypoint = Waypoint()
+            new_waypoint.pose.pose = self.orig_waypoints[waypoint_idx].pose.pose
+            target_speed = 0.01 if tl_state == 0 else self.base_waypoints[waypoint_idx]['twist_x']
+            new_waypoint.twist.twist.linear.x = target_speed
             lane_msg.waypoints.append(new_waypoint)
-#            rospy.logerr("Original waypoint: %s", self.orig_waypoints[idx])
-#            rospy.logerr("Coppied waypoint: %s", lane_msg.waypoints[-1])
-        # For circling around
-        if circular_leftover is not None:
-            rospy.logerr("Circling around for : %d", circular_leftover)
-            for idx in range(circular_leftover):
-                new_waypoint = copy.deepcopy(self.orig_waypoints[idx])
-                lane_msg.waypoints.append(new_waypoint)
-#        for waypoint in lane_msg.waypoints:
-#            sp = waypoint.twist.twist.linear.x
-#            sp *= 1.5
-#            waypoint.twist.twist.linear.x = 22.
-#            rospy.logerr("Modifoed speed: %f", sp)
 
-
-        rospy.logerr("Publishing lane message starting from: %d, %d",
-                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
-                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
-        rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
-                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
+        rospy.logerr('Next traffic light state: %d', tl_state)
+        # rospy.logerr("Publishing lane message starting from: %d, %d",
+        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
+        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
+        # rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
+        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
         self.final_waypoints_pub.publish(lane_msg)
 
         # Store the last waypoint index to narrow down the search
@@ -146,7 +168,8 @@ class WaypointUpdater(object):
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
-        pass
+        # DRAGON: For now this gets the lights from simulator
+        self.traffic_lights = msg.lights
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
