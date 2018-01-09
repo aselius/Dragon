@@ -4,6 +4,10 @@
 ### Installation
 It is probably easiest to install ROS and deploy everything with Docker, and although you could use the VM provided by Udacity [here](https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/Udacity_VM_Base_V1.0.0.zip), it is recommended to deploy using Docker.
 
+Clone the repository on your host OS to your PWD
+```bash
+cd $PWD/Dragon
+```
 If you do not have Docker, feel free to install Docker for your host OS.
 [Install Docker](https://docs.docker.com/engine/installation/)
 
@@ -17,9 +21,9 @@ Run the docker file
 docker run -p 4567:4567 -v $PWD:/capstone -v /tmp/log:/root/.ros/ --rm -it capstone
 ```
 
-Source the ROS env variables
+Source the ROS env variables. (Change Kinematic to Indigo if using 14.04)
 ```bash
-echo "source /opt/ros/indigo/setup.bash" >> ~/.bashrc
+echo "source /opt/ros/kinematic/setup.bash" >> ~/.bashrc
 ```
 
 Clone this project repository
@@ -47,10 +51,14 @@ You can choose to grep the container ID or name and pipe it into the exec comman
 ```bash
 docker exec -it <container name or id> /bin/bash
 cd /Dragon/ros && source devel/setup.sh
-roslaunch waypoint_loader waypoint_loader.launch
+roslaunch waypoint_loader waypoint_updater.launch
 ```
-New bash session in Docker container
+Each roslaunch command in a new bash session in Docker container.
+After the updater is launched and is hanging,
 ```bash
+roslaunch waypoint_loader waypoint_loader.launch
 roslaunch styx server.launch
+roslaunch waypoint_follower pure_pursuit.launch
+roslaunch twist_controller dbw_sim.launch
 ```
 
