@@ -1,6 +1,23 @@
 # Carla Self Driving Car System Integration Project
 ## Team Dragon
 
+### Running
+1. Open 5 different bash shells
+First in separate bash windows do the following. (If you have put source devel/setup.bash in your startup script you can ignore second step)
+$ cd CarND-Capstone/ros
+$ source devel/setup.bash
+
+Now in strict order do following in every window.
+
+1. $ roslaunch waypoint_updater waypoint_updater.launch 
+2. $ roslaunch waypoint_loader waypoint_loader.launch 
+3. $ roslaunch styx server.launch
+4. $ roslaunch waypoint_follower pure_pursuit.launch
+5. $ roslaunch twist_controller dbw_sim.launch
+
+
+
+
 ### Installation
 It is probably easiest to install ROS and deploy everything with Docker, and although you could use the VM provided by Udacity [here](https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/Udacity_VM_Base_V1.0.0.zip), it is recommended to deploy using Docker.
 
