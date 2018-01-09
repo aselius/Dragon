@@ -60,7 +60,7 @@ class DBWNode(object):
         # Dragon
         self.controller = Controller(-4.0, 1, 0)
         self.yaw_controller = YawController(wheel_base, steer_ratio, 0, max_lat_accel, max_steer_angle)
-        self.low_pass_filter = LowPassFilter()
+        #self.low_pass_filter = LowPassFilter()
 
         self.dbw_enabled = True # Start off with true
         self.actual_linear_vel = 0.0
