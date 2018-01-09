@@ -29,6 +29,7 @@ RUN apt-get install -y ros-$ROS_DISTRO-image-proc
 RUN apt-get install -y netbase
 
 RUN mkdir /capstone
+RUN mkdir /Dragon
 VOLUME ["/capstone"]
 VOLUME ["/root/.ros/log/"]
-WORKDIR /capstone/ros
+WORKDIR /Dragon
