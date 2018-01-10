@@ -65,7 +65,8 @@ class WaypointUpdater(object):
             if straight_dist <= search_range:
                 light_wp_idx = self.util.closestWaypoint(light_pos.x, light_pos.y, self.base_waypoints)
                 light_wp_pos = self.orig_waypoints[light_wp_idx].pose.pose.position
-                light_dist = self.util.path_len(nxt_wp_idx, light_wp_idx, self.orig_waypoints)
+                light_dist = self.util.path_len(nxt_wp_idx, light_wp_idx, self.orig_waypoints, search_range * 2)
+                if light_dist == None: light_dist = search_range * 3
                 rospy.logerr('Traffic light number %d at x:%d y:%d %dm away snapto:(%d %f %f) pathlen: %f.',
                              i, light_pos.x, light_pos.y, straight_dist, light_wp_idx, light_wp_pos.x,
                              light_wp_pos.y, light_dist)
@@ -90,8 +91,8 @@ class WaypointUpdater(object):
         # DRAGON:
         cur_x = msg.pose.position.x
         cur_y = msg.pose.position.y
-        rospy.logerr("X: %f, Y: %f", cur_x, cur_y)
         nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints, self.last_wp_index)
+        rospy.logerr("X: %f, Y: %f, wp: %d", cur_x, cur_y, nxt_wp_idx)
         #nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints)
 
         if nxt_wp_idx < 0 or nxt_wp_idx >= len(self.orig_waypoints):
@@ -105,23 +106,24 @@ class WaypointUpdater(object):
         stopin_time = self.base_waypoints[nxt_wp_idx]['twist_x'] / MAX_ACCEL
         stopin_dist = MAX_ACCEL * (stopin_time ** 2) / 2.
         
-        circular_leftover = None
         tl_state = self.next_light_state(nxt_wp_idx, max(stopin_dist, 30))
 
         for idx in range(LOOKAHEAD_WPS):
             waypoint_idx = (nxt_wp_idx+idx) % len(self.orig_waypoints)
             new_waypoint = Waypoint()
             new_waypoint.pose.pose = self.orig_waypoints[waypoint_idx].pose.pose
-            target_speed = 0.01 if tl_state == 0 else self.base_waypoints[waypoint_idx]['twist_x']
+            # steering is not ready for such drastic breaking yet but at least it doesn't break completely
+            target_speed = 0 if tl_state == 0 else self.base_waypoints[waypoint_idx]['twist_x']
+            #target_speed = self.base_waypoints[waypoint_idx]['twist_x']
             new_waypoint.twist.twist.linear.x = target_speed
             lane_msg.waypoints.append(new_waypoint)
 
-        rospy.logerr('Next traffic light state: %d', tl_state)
-        # rospy.logerr("Publishing lane message starting from: %d, %d",
-        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
-        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
-        # rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
-        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
+        # rospy.logerr('Next traffic light state: %d', tl_state)
+        rospy.logerr("Publishing lane message starting from: %d, %d",
+                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
+                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
+        rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
+                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
         self.final_waypoints_pub.publish(lane_msg)
 
         # Store the last waypoint index to narrow down the search

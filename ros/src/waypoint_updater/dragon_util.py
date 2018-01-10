@@ -14,7 +14,7 @@ class DragonUtil(object):
     def forward_count(self, start, end, length):
         return end - start if start <= end else length - (start - end)
 
-    def path_len(self, start, end, waypoints):
+    def path_len(self, start, end, waypoints, search_range):
         waypoint_count = len(waypoints)
         dot_count = self.forward_count(start, end, waypoint_count)
         result = 0.
@@ -22,6 +22,7 @@ class DragonUtil(object):
             current = waypoints[(start + i) % waypoint_count].pose.pose.position
             next_point = waypoints[(start + i + 1) % waypoint_count].pose.pose.position
             result += self.distance(current.x, current.y, next_point.x, next_point.y)
+            if result > search_range: return None
         return result
     
     def closestWaypoint(self, x, y, waypoints, start_idx=0, lookup_range=None):
