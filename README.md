@@ -2,10 +2,10 @@
 ## Team Dragon
 
 ### Running
-1. Open 5 different bash shells
+1. Open 2 different bash shells
 First in separate bash windows do the following. (If you have put source devel/setup.bash in your startup script you can ignore second step)
 <br/>
-$ cd CarND-Capstone/ros
+$ cd Dragon/ros
 <br/>
 $ source devel/setup.bash
 
