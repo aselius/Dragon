@@ -8,14 +8,19 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from light_classification.tl_classifier import TLClassifier
 import tf
+import tensorflow as TF
 import cv2
 import yaml
+import numpy as np
+
+import PIL.Image
 
 STATE_COUNT_THRESHOLD = 3
 
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
+        rospy.logerr(TF.__version__)
 
         self.pose = None
         self.waypoints = None
@@ -49,6 +54,32 @@ class TLDetector(object):
         self.last_wp = -1
         self.state_count = 0
 
+        # Load the tensorflow model
+
+        self.process_cnt = 5 # Process only every 5th image
+
+        import os
+        cwd = os.getcwd()
+        rospy.logerr("__Working directory__:%s", cwd)
+
+        PATH_TO_CKPT = '../../../classifier/data' + '/udacity_frozen_inference_graph.pb'
+        # List of the strings that is used to add correct label for each box.
+        PATH_TO_LABELS = '../../../classifier/data' + 'udacity_label_map.pbtxt'
+
+        NUM_CLASSES = 4  # 90
+
+        print(PATH_TO_CKPT)
+
+        self.detection_graph = TF.Graph()
+        with self.detection_graph.as_default():
+            od_graph_def = TF.GraphDef()
+            with TF.gfile.GFile(PATH_TO_CKPT, 'rb') as fid:
+                serialized_graph = fid.read()
+                od_graph_def.ParseFromString(serialized_graph)
+                TF.import_graph_def(od_graph_def, name='')
+
+
+
         rospy.spin()
 
     def pose_cb(self, msg):
@@ -68,9 +99,57 @@ class TLDetector(object):
             msg (Image): image from car-mounted camera
 
         """
+
+        if self.process_cnt > 0:
+            self.process_cnt -= 1
+            return
+        else:
+            self.process_cnt = 5
+
+
+
         self.has_image = True
         self.camera_image = msg
         light_wp, state = self.process_traffic_lights()
+
+        rospy.logerr("*****************Got image********************8")
+
+        image_np = self.bridge.imgmsg_to_cv2(msg, "rgb8")
+        #image = PIL.Image.fromarray(image_np)
+
+        rospy.logerr("Conversion successful")
+
+        with self.detection_graph.as_default():
+            with TF.Session(graph=self.detection_graph) as sess:
+                # Definite input and output Tensors for detection_graph
+                image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+                # Each box represents a part of the image where a particular object was detected.
+                detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
+                # Each score represent how level of confidence for each of the objects.
+                # Score is shown on the result image, together with the class label.
+                detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
+                detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
+                num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+
+
+                #image = Image.open(image_path)
+                # the array based representation of the image will be used later in order to prepare the
+                # result image with boxes and labels on it.
+                #image_np = load_image_into_numpy_array(image)
+                # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+                image_np_expanded = np.expand_dims(image_np, axis=0)
+                # Actual detection.
+                (boxes, scores, classes, num) = sess.run(
+                    [detection_boxes, detection_scores, detection_classes, num_detections],
+                    feed_dict={image_tensor: image_np_expanded})
+                # Visualization of the results of a detection.
+
+                if (int)(np.squeeze(classes)[0]) == 2 and np.squeeze(scores)[0] > 0.4:
+                    rospy.logerr("Red detected with accuracy %f", np.squeeze(scores)[0])
+
+                #print('classes=', np.squeeze(classes)[0])
+                #print('scores=', np.squeeze(scores)[0])
+
 
         '''
         Publish upcoming red lights at camera frequency.
