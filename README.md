@@ -2,18 +2,15 @@
 ## Team Dragon
 
 ### Running
-1. Open 5 different bash shells
-First in separate bash windows do the following. (If you have put source devel/setup.bash in your startup script you can ignore second step)
-$ cd CarND-Capstone/ros
+1. Open 2 different bash shells
+First in separate bash windows do the following. (If you have put source devel/setup.bash in your startup script you can ignore second step)<br/>
+$ cd Dragon/ros<br/>
 $ source devel/setup.bash
 
 Now in strict order do following in every window.
 
-1. $ roslaunch waypoint_updater waypoint_updater.launch 
-2. $ roslaunch waypoint_loader waypoint_loader.launch 
-3. $ roslaunch styx server.launch
-4. $ roslaunch waypoint_follower pure_pursuit.launch
-5. $ roslaunch twist_controller dbw_sim.launch
+1. $ roslaunch launch/styx.launch
+5. $ roslaunch tl_detector tl_detector.launch
 
 
 
