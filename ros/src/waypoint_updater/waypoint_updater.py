@@ -26,7 +26,9 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-MAX_ACCEL = 9.5
+MAX_ACCEL = 1.
+MAX_DECEL = -5.
+DROP_RATE = 10
 
 
 class WaypointUpdater(object):
@@ -50,10 +52,24 @@ class WaypointUpdater(object):
         self.orig_waypoints = [] # The original waypoint messages
         self.last_wp_index = 0
         self.traffic_lights = [] # Latest state of traffic lights
+        self.max_accel = None
+        self.max_decel = None
+        self.pos_count = 0
+        self.last_set_speed = 0
 
         rospy.spin()
 
+    def get_max_decel(self):
+        if self.max_decel == None:
+            try:
+                self.max_decel = rospy.get_param('/dbw_node/decel_limit')
+            except KeyError:
+                return MAX_DECEL / 5.
 
+        return self.max_decel / 5.
+
+    
+    
     def next_light_state(self, nxt_wp_idx, search_range):
         lights = self.traffic_lights
         candidate_idxs = []
@@ -84,6 +100,10 @@ class WaypointUpdater(object):
 
     def pose_cb(self, msg):
 #        rospy.loginfo("DRAGON: Received current pose message.")
+        # self.pos_count += 1
+        # if self.pos_count == DROP_RATE: self.pos_count = 0
+        # else: return
+        
         euler = euler_from_quaternion([msg.pose.orientation.x, msg.pose.orientation.y,
                                        msg.pose.orientation.z, msg.pose.orientation.w])
 #        rospy.logerr(euler)
@@ -92,6 +112,7 @@ class WaypointUpdater(object):
         cur_x = msg.pose.position.x
         cur_y = msg.pose.position.y
         nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints, self.last_wp_index)
+        if nxt_wp_idx == self.last_wp_index and self.last_set_speed != 0: return
         rospy.logerr("X: %f, Y: %f, wp: %d", cur_x, cur_y, nxt_wp_idx)
         #nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints)
 
@@ -103,27 +124,33 @@ class WaypointUpdater(object):
         lane_msg = Lane()
         last_idx = (nxt_wp_idx+LOOKAHEAD_WPS) % len(self.orig_waypoints)
 
-        stopin_time = self.base_waypoints[nxt_wp_idx]['twist_x'] / MAX_ACCEL
-        stopin_dist = MAX_ACCEL * (stopin_time ** 2) / 2.
+        # TODO: get actual velocity
+        current_vel = self.base_waypoints[nxt_wp_idx]['twist_x']
+        max_decel = self.get_max_decel()
+        stopin_time = current_vel / max_decel
+        stopin_dist = -max_decel * (stopin_time ** 2) / 2.
         
-        tl_state = self.next_light_state(nxt_wp_idx, max(stopin_dist, 30))
+        tl_state = self.next_light_state(nxt_wp_idx, (stopin_dist + 20.))
 
         for idx in range(LOOKAHEAD_WPS):
             waypoint_idx = (nxt_wp_idx+idx) % len(self.orig_waypoints)
             new_waypoint = Waypoint()
             new_waypoint.pose.pose = self.orig_waypoints[waypoint_idx].pose.pose
             # steering is not ready for such drastic breaking yet but at least it doesn't break completely
-            target_speed = 0 if tl_state == 0 else self.base_waypoints[waypoint_idx]['twist_x']
+            target_speed = 0 if tl_state in (0, 1) else self.base_waypoints[waypoint_idx]['twist_x']
             #target_speed = self.base_waypoints[waypoint_idx]['twist_x']
             new_waypoint.twist.twist.linear.x = target_speed
             lane_msg.waypoints.append(new_waypoint)
+        self.last_set_speed = target_speed
 
-        # rospy.logerr('Next traffic light state: %d', tl_state)
-        rospy.logerr("Publishing lane message starting from: %d, %d",
-                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
-                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
-        rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
-                     self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
+
+        if tl_state != 4:
+            rospy.logerr('Next traffic light state: %d', tl_state)
+        # rospy.logerr("Publishing lane message starting from: %d, %d",
+        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.x,
+        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.y)
+        # rospy.logerr("Difference b/w cur and way point: %d, %d", self.orig_waypoints[nxt_wp_idx].pose.pose.position.x - cur_x,
+        #              self.orig_waypoints[nxt_wp_idx].pose.pose.position.y - cur_y)
         self.final_waypoints_pub.publish(lane_msg)
 
         # Store the last waypoint index to narrow down the search
@@ -160,8 +187,8 @@ class WaypointUpdater(object):
             #fn = util.getFrenet(wp['x'], wp['y'], wp['angle'], self.base_waypoints, next_wp_index, prev_s_dist)
             fn = self.util.getFrenet(wp['x'], wp['y'], wp['angle'], self.base_waypoints, next_wp_index, prev_s_dist)
             prev_s_dist = fn['s']
-            rospy.logerr(wp)
-            rospy.logerr(fn)
+#            rospy.logerr(wp)
+#            rospy.logerr(fn)
             #pass
         rospy.logerr("All done")
 
