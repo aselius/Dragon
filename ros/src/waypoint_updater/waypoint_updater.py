@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
 import rospy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from styx_msgs.msg import Lane, Waypoint, TrafficLight, TrafficLightArray
 
 import math
@@ -33,11 +33,13 @@ DROP_RATE = 10
 
 class WaypointUpdater(object):
     def __init__(self):
+        self.initialized = False
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
 
@@ -54,12 +56,20 @@ class WaypointUpdater(object):
         self.traffic_lights = [] # Latest state of traffic lights
         self.max_accel = None
         self.max_decel = None
+        self.current_pos = None
+        self.current_speed = None
         self.pos_count = 0
         self.last_set_speed = 0
+        self.rate = rospy.Rate(5)
+        
+#        rospy.spin()
 
-        rospy.spin()
 
+    def velocity_cb(self, msg):
+        self.current_speed = msg.twist.linear.x
+        
     def get_max_decel(self):
+
         if self.max_decel == None:
             try:
                 self.max_decel = rospy.get_param('/dbw_node/decel_limit')
@@ -99,20 +109,28 @@ class WaypointUpdater(object):
         
 
     def pose_cb(self, msg):
+        self.current_pos = msg.pose
 #        rospy.loginfo("DRAGON: Received current pose message.")
         # self.pos_count += 1
         # if self.pos_count == DROP_RATE: self.pos_count = 0
         # else: return
+
+    def do_stuff(self):
+        if (not self.initialized) or self.current_pos == None or self.current_speed == None:
+            rospy.sleep(.1)
+            return
         
-        euler = euler_from_quaternion([msg.pose.orientation.x, msg.pose.orientation.y,
-                                       msg.pose.orientation.z, msg.pose.orientation.w])
+        pos = self.current_pos
+        current_vel = self.current_speed # base_waypoints[nxt_wp_idx]['twist_x']
+        euler = euler_from_quaternion([pos.orientation.x, pos.orientation.y,
+                                       pos.orientation.z, pos.orientation.w])
 #        rospy.logerr(euler)
 
         # DRAGON:
-        cur_x = msg.pose.position.x
-        cur_y = msg.pose.position.y
+        cur_x = pos.position.x
+        cur_y = pos.position.y
         nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints, self.last_wp_index)
-        if nxt_wp_idx == self.last_wp_index and self.last_set_speed != 0: return
+#        if nxt_wp_idx == self.last_wp_index and self.last_set_speed != 0: return
         rospy.logerr("X: %f, Y: %f, wp: %d", cur_x, cur_y, nxt_wp_idx)
         #nxt_wp_idx = self.util.nextWaypoint(cur_x, cur_y, euler[2], self.base_waypoints)
 
@@ -125,7 +143,7 @@ class WaypointUpdater(object):
         last_idx = (nxt_wp_idx+LOOKAHEAD_WPS) % len(self.orig_waypoints)
 
         # TODO: get actual velocity
-        current_vel = self.base_waypoints[nxt_wp_idx]['twist_x']
+
         max_decel = self.get_max_decel()
         stopin_time = current_vel / max_decel
         stopin_dist = -max_decel * (stopin_time ** 2) / 2.
@@ -155,6 +173,7 @@ class WaypointUpdater(object):
 
         # Store the last waypoint index to narrow down the search
         self.last_wp_index = nxt_wp_idx
+        self.rate.sleep()
 
     def waypoints_cb(self, waypoints):
         rospy.loginfo("DRAGON: Received the base waypoints messages")
@@ -191,6 +210,7 @@ class WaypointUpdater(object):
 #            rospy.logerr(fn)
             #pass
         rospy.logerr("All done")
+        self.initialized = True
 
 
 
@@ -221,6 +241,8 @@ class WaypointUpdater(object):
 
 if __name__ == '__main__':
     try:
-        WaypointUpdater()
+        wpy = WaypointUpdater()
+        while not rospy.is_shutdown():
+            wpy.do_stuff()
     except rospy.ROSInterruptException:
         rospy.logerr('Could not start waypoint updater node.')
