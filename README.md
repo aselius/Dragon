@@ -18,12 +18,13 @@ docker build . -t capstone
 
 Run the docker file
 ```bash
-docker run -p 4567:4567 -v $PWD:/capstone -v /tmp/log:/root/.ros/ --rm -it capstone
+docker run -p 4567:4567 -v $PWD:/Dragon -v /tmp/log:/root/.ros/ --rm -it capstone
 ```
 
 Source the ROS env variables. (Change Kinematic to Indigo if using 14.04)
 ```bash
-echo "source /opt/ros/kinematic/setup.bash" >> ~/.bashrc
+echo "source /opt/ros/kinetic/setup.bash" >> ~/.bashrc
+echo "source /Dragon/ros/devel/setup.bash" >> ~/.bashrc
 ```
 
 Clone this project repository
@@ -42,7 +43,7 @@ source devel/setup.sh
 roslaunch waypoint_updater waypoint_updater.launch
 ```
 
-> Note that for every new bash session if you are SSH-ing into the Docker container, you need to source devel/setup.py inorder to be able to roslaunch on the command line. Everytime it is specified that you should open a new session, docker exec command and the source devl/setup.sh mentioned below needs to be executed and will be omited in the bash code snippet after the first block.
+> Note that for every new bash session if you are SSH-ing into the Docker container, you should open a new session and use the docker exec command. Instructions for starting a new bash session will be omited in the bash code snippet after the first block.
 
 ```bash
 docker ps
@@ -50,7 +51,7 @@ docker ps
 You can choose to grep the container ID or name and pipe it into the exec command directly or just use the clipboard to copy and paste
 ```bash
 docker exec -it <container name or id> /bin/bash
-cd /Dragon/ros && source devel/setup.sh
+cd /Dragon/ros
 roslaunch waypoint_loader waypoint_updater.launch
 ```
 Each roslaunch command in a new bash session in Docker container.
@@ -62,3 +63,25 @@ roslaunch waypoint_follower pure_pursuit.launch
 roslaunch twist_controller dbw_sim.launch
 ```
 
+--------
+
+### How to test dbw
+
+In order to test dbw, you need to download the ros.bag file and save it to the $PWD/Dragon/data directory
+```bash
+cd /Dragon/data
+curl -H "Authorization: Bearer YYYYY” https://www.googleapis.com/drive/v3/files/0B2_h37bMVw3iT0ZEdlF4N01QbHc?alt=media -o udacity_succesful_light_detection.bag
+mv udacity_succesful_light_detection.bag dbw_test.rosbag.bag
+```
+
+After downloading and renaming the file,
+```bash
+cd ../ros
+roslaunch twist_controller dbw_test.launch
+```
+
+This will save 3 csv files which you can process to figure out how your DBW node is
+performing on various commands.
+
+
+`/actual/*` are commands from the recorded bag while `/vehicle/*` are the output of your node.
