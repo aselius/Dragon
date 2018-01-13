@@ -47,6 +47,7 @@ class DBWNode(object):
         steer_ratio = rospy.get_param('~steer_ratio', 14.8)
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
         max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
+	min_speed = rospy.get_param('~min_speed', 4.*0.44704)
 
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)
@@ -58,7 +59,7 @@ class DBWNode(object):
         # TODO: Create `TwistController` object
         # self.controller = TwistController(<Arguments you wish to provide>)
         # Dragon
-        self.controller = Controller(-4.0, 1, 0)
+        self.controller = Controller(vehicle_mass=vehicle_mass, fuel_capacity=fuel_capacity, brake_deadband=brake_deadband, decel_limit=decel_limit, accel_limit=accel_limit, wheel_radius=wheel_radius, wheel_base=wheel_base, steer_ratio=steer_ratio, max_lat_accel=max_lat_accel, max_steer_angle=max_steer_angle, min_speed=min_speed )
         self.yaw_controller = YawController(wheel_base, steer_ratio, 0, max_lat_accel, max_steer_angle)
         #self.low_pass_filter = LowPassFilter()
 
