@@ -32,18 +32,6 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
-        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
-
-        # DONE: Add a subscriber for /traffic_waypoint 
-        # LATER: and /obstacle_waypoint below
-        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_waypoint_cb)
-
-
-        self.final_waypoints_pub = rospy.Publisher('/final_waypoints'
-                                        , Lane, queue_size=1)
 
         # DONE: Add other member variables you need below
         self.base_waypoints = []
@@ -65,6 +53,18 @@ class WaypointUpdater(object):
         rospy.loginfo('required_vel=%s, decel_limit=%s'
             , self.required_velocity, self.decel_limit)
 
+        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+
+        # DONE: Add a subscriber for /traffic_waypoint 
+        # LATER: and /obstacle_waypoint below
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_waypoint_cb)
+
+
+        self.final_waypoints_pub = rospy.Publisher('/final_waypoints'
+                                        , Lane, queue_size=1)
         rospy.spin()
 
 
