@@ -23,8 +23,25 @@ class TLDetector(object):
         self.pose = None
         self.waypoints = None
         self.camera_image = None
+        self.has_image = False
         self.lights = []
         self.stop_line_wp_idxs = []
+
+        # there are stop lines before traffic lights
+        config_string = rospy.get_param("/traffic_light_config")
+        self.config = yaml.load(config_string)
+
+        self.bridge = CvBridge()
+        self.light_classifier = TLClassifier()
+        self.listener = tf.TransformListener()
+
+        self.state = TrafficLight.UNKNOWN
+        self.last_state = TrafficLight.UNKNOWN
+        self.last_stop_line_wp_idx = -1
+        self.car_wp_idx = -1
+        self.last_car_wp_idx = -1
+        self.state_count = 0
+        self.visible_distance_wps = 200
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -40,24 +57,8 @@ class TLDetector(object):
         sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_lights_cb)
         # for real test on the vehicle using traffic light classifier for camera image
         sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
-        # there are stop lines before traffic lights
-        config_string = rospy.get_param("/traffic_light_config")
-        self.config = yaml.load(config_string)
-
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
-        self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
-        self.listener = tf.TransformListener()
-
-        self.state = TrafficLight.UNKNOWN
-        self.last_state = TrafficLight.UNKNOWN
-        self.last_stop_line_wp_idx = -1
-        self.car_wp_idx = -1
-        self.last_car_wp_idx = -1
-        self.state_count = 0
-        self.has_image = False
-        self.visible_distance_wps = 200
 
         rospy.spin()
 
