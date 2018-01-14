@@ -1,46 +1,72 @@
-import rospy # For time
+import rospy
+from yaw_controller import YawController
+from pid import PID
+
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 
 
 class Controller(object):
-    def __init__(self, Kp, Ki, Kd):
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-        self.last_err = 0.0
-        self.acc_err = 0.0
-        self.last_time = None
+    def __init__(self, *args, **kwargs):
+        # DONE: Implement
+        self.vehicle_mass = kwargs['vehicle_mass']
+        self.wheel_radius = kwargs['wheel_radius']
+        self.decel_limit = kwargs['decel_limit']
+        self.accel_limit = kwargs['accel_limit']
+        self.brake_deadband = kwargs['brake_deadband']
+        self.fuel_capacity = kwargs['fuel_capacity'] 
 
-    def clear(self):
-        self.last_time = None
+        # if with full gass
+        self.total_mass = self.vehicle_mass + self.fuel_capacity * GAS_DENSITY
 
+        self.velocity_pid = PID(4., 0, 0
+                , self.decel_limit, self.accel_limit)
 
-    def control(self, desired_vel, current_vel):
+        self.wheel_base = kwargs['wheel_base'] # yaw
+        self.steer_ratio = kwargs['steer_ratio'] # yaw
+        self.max_lat_accel = kwargs['max_lat_accel'] # yaw
+        self.max_steer_angle = kwargs['max_steer_angle'] # yaw
+        self.min_speed = 0
 
-        error = current_vel - desired_vel
+        self.yaw_controller = YawController(
+                self.wheel_base, self.steer_ratio, self.min_speed
+                , self.max_lat_accel, self.max_steer_angle)
 
-        p_term = self.Kp * error
-        d_term = 0
-        cur_time = rospy.get_time()
-        if self.last_time is not None:
-            diff_time = cur_time - self.last_time
-            rospy.logerr("Cur_time: %f, Diff_time: %f", cur_time, diff_time)
-            d_term = self.Kd * (error - self.last_err)/(diff_time)
-            rospy.logerr("D term: %f", d_term)
+        self.last_time = rospy.get_time()
 
-        throttle = p_term + d_term
-        brake = 0.0
-        if throttle > 1.0:
-            throttle = 1.0
-        if throttle < -1.0:
-            throttle = -1.0
-        # If its negative throttle, then reverse
-        if throttle < 0:
-            brake = 5 * throttle
-            throttle = 0.0
+    def reset(self):
+        self.velocity_pid.reset()
 
-        self.last_err = error
-        self.last_time = cur_time
+    def control(self, proposed_linear_velocity, proposed_angular_velocity, current_linear_velocity, dbw_enabled):
+        # DONE: Change the arg, kwarg list to suit your needs
+        # Return throttle, brake, steer
 
-        return throttle, brake
+        curr_time = rospy.get_time()
+        sample_time = curr_time - self.last_time
+        self.last_time = curr_time
+        error = proposed_linear_velocity - current_linear_velocity
+        accel = self.velocity_pid.step(error, sample_time)
+
+        steer = self.yaw_controller.get_steering(proposed_linear_velocity
+            , proposed_angular_velocity, current_linear_velocity)
+
+        # accelerate
+        if accel > 0.:
+            throttle = accel
+            brake = 0.
+        # decelerate
+        else:
+            throttle = 0.
+            # brake in units of torque (N*m). 
+            # The correct values for brake can be computed 
+            # using the desired acceleration, weight of the vehicle, and wheel radius.
+            # if proposed_linear_velocity is too small, make full brake
+            if proposed_linear_velocity < 0.1:
+                brake = abs(self.decel_limit) * self.total_mass * self.wheel_radius
+            else:
+                decel = abs(accel)
+                if decel < self.brake_deadband:
+                    decel = 0.
+                brake = decel * self.total_mass * self.wheel_radius
+
+        return throttle, brake, steer
