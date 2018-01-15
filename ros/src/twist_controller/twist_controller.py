@@ -1,46 +1,50 @@
-import rospy
-from yaw_controller import YawController
-from pid import PID
+import rospy # For time
+
 from lowpass import LowPassFilter
+from pid import PID
+from yaw_controller import YawController
 
 GAS_DENSITY = 2.858
-ONE_MPH = 0.44704
+ONE_MPH = 0.44704 # NOTE(aselius): This is conversion from milesph to m/s
 
 
 class Controller(object):
-    def __init__(self, *args, **kwargs):
-        # DONE: Implement
-        self.vehicle_mass = kwargs['vehicle_mass']
-        self.wheel_radius = kwargs['wheel_radius']
-        self.decel_limit = kwargs['decel_limit']
-        self.accel_limit = kwargs['accel_limit']
-        self.brake_deadband = kwargs['brake_deadband']
-        self.fuel_capacity = kwargs['fuel_capacity'] 
+    def __init__(self, **kwargs):
+        self.last_time = None
 
-        # if with full gass
-        self.total_mass = self.vehicle_mass + self.fuel_capacity * GAS_DENSITY
+	self.vehicle_mass    = kwargs['vehicle_mass']
+	self.fuel_capacity   = kwargs['fuel_capacity']
+	self.brake_deadband  = kwargs['brake_deadband']
+	self.decel_limit     = kwargs['decel_limit']
+	self.accel_limit     = kwargs['accel_limit']
+	self.wheel_radius    = kwargs['wheel_radius']
+	self.wheel_base      = kwargs['wheel_base']
+	self.steer_ratio     = kwargs['steer_ratio']
+	self.max_lat_accel   = kwargs['max_lat_accel']
+	self.max_steer_angle = kwargs['max_steer_angle']
+	self.min_speed       = kwargs['min_speed']
 
-        self.velocity_pid = PID(kp=3., ki=0, kd=0. #3., 0, 0.0001
-                , mn=self.decel_limit, mx=self.accel_limit)
-        self.velocity_lowpass = LowPassFilter(tau = 0.001, ts = 0.02)
+	self.total_mass = self.vehicle_mass + self.fuel_capacity * GAS_DENSITY
 
-        self.wheel_base = kwargs['wheel_base'] # yaw
-        self.steer_ratio = kwargs['steer_ratio'] # yaw
-        self.max_lat_accel = kwargs['max_lat_accel'] # yaw
-        self.max_steer_angle = kwargs['max_steer_angle'] # yaw
-        self.min_speed = 0
+	self.yaw_controller = YawController(kwargs['wheel_base'], kwargs['steer_ratio'],
+					    kwargs['min_speed'], kwargs['max_lat_accel'],
+					    kwargs['max_steer_angle'])
 
-        self.yaw_controller = YawController(
-                self.wheel_base, self.steer_ratio, self.min_speed
-                , self.max_lat_accel, self.max_steer_angle)
-        self.yaw_lowpass = LowPassFilter(tau = 0.001, ts = 0.02)
+	self.velocity_pid = PID(3, 0, 0.001, self.decel_limit, self.accel_limit)
+	self.tau_correction = 0.2
+	self.ts_correction = 0.1
+	
+	self.velocity_lowpass = LowPassFilter(self.tau_correction, self.ts_correction)
 
-        self.last_time = rospy.get_time()
+	# NOTE(aselius): I believe this is just 50hz, but should be fine for now..
+	# self.sample_time = 1.0/50; # 50 Hz
+	self.last_time = rospy.get_time()
 
     def reset(self):
         self.velocity_pid.reset()
 
-    def control(self, proposed_linear_velocity, proposed_angular_velocity, current_linear_velocity, dbw_enabled):
+    def control(self, proposed_linear_velocity, proposed_angular_velocity,
+		current_linear_velocity, dbw_enabled):
         # DONE: Change the arg, kwarg list to suit your needs
         # Return throttle, brake, steer
 
@@ -51,15 +55,16 @@ class Controller(object):
         accel = self.velocity_pid.step(error, sample_time)
         accel = self.velocity_lowpass.filt(accel)
 
-        steer = self.yaw_controller.get_steering(proposed_linear_velocity
-            , proposed_angular_velocity, current_linear_velocity)
-        steer = self.yaw_lowpass.filt(steer)
+        steer = self.yaw_controller.get_steering(proposed_linear_velocity,
+						 proposed_angular_velocity,
+						 current_linear_velocity)
+	# NOTE(aselius): I believe we don't need a lowpass for steering
+	# since the lowpass is trying to adjust for measurement noise
+	# coming from the car, which is only limited to current_velocity.
 
-        # accelerate
         if accel > 0.:
             throttle = accel
             brake = 0.
-        # decelerate
         else:
             throttle = 0.
             # brake in units of torque (N*m). 
@@ -75,3 +80,4 @@ class Controller(object):
                 brake = decel * self.total_mass * self.wheel_radius
 
         return throttle, brake, steer
+

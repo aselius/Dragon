@@ -31,4 +31,6 @@ RUN apt-get install -y netbase
 RUN mkdir /capstone
 VOLUME ["/capstone"]
 VOLUME ["/root/.ros/log/"]
-WORKDIR /capstone/ros
+RUN mkdir /Dragon
+VOLUME ["/Dragon"]
+WORKDIR /Dragon
