@@ -40,10 +40,13 @@ Make and run nodes
 cd ros
 catkin_make
 source devel/setup.sh
-roslaunch waypoint_updater waypoint_updater.launch
 ```
 
-> Note that for every new bash session if you are SSH-ing into the Docker container, you should open a new session and use the docker exec command. Instructions for starting a new bash session will be omited in the bash code snippet after the first block.
+At this point, exit bash on Docker or proceed to Run steps [below](#);
+
+#### How to "SSH" into your Docker container
+
+> Note that for every new bash session if you are SSH-ing into the Docker container, you should open a new session and use the docker exec command.
 
 ```bash
 docker ps
@@ -52,15 +55,37 @@ You can choose to grep the container ID or name and pipe it into the exec comman
 ```bash
 docker exec -it <container name or id> /bin/bash
 cd /Dragon/ros
-roslaunch waypoint_loader waypoint_updater.launch
 ```
-Each roslaunch command in a new bash session in Docker container.
-After the updater is launched and is hanging,
+This will successfully get you a new bash window to the container where your ros environment resides.
+
+--------
+
+### Run ROS alongside the simulator
+After intalling successfully, and run below respectively.
 ```bash
-roslaunch waypoint_loader waypoint_loader.launch
-roslaunch styx server.launch
-roslaunch waypoint_follower pure_pursuit.launch
-roslaunch twist_controller dbw_sim.launch
+roscore
+```
+```bash
+roslaunch launch/styx.launch
+```
+
+-------
+
+
+### Running the Traffic Light detection standalone
+1. Open 2 different bash shells
+2. In both bash windows do the following. (If you have installed with the instructions above, skip this step.)
+```bash
+cd Dragon/ros
+source devel/setup.bash
+```
+3. In window 1,
+```bash
+roslaunch launch/styx.launch
+```
+4. In window 2,
+```bash
+roslaunch tl_detector tl_detector.launch
 ```
 
 --------
