@@ -1,6 +1,7 @@
 import rospy
 from yaw_controller import YawController
 from pid import PID
+from lowpass import LowPassFilter
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
@@ -19,8 +20,9 @@ class Controller(object):
         # if with full gass
         self.total_mass = self.vehicle_mass + self.fuel_capacity * GAS_DENSITY
 
-        self.velocity_pid = PID(4., 0, 0
-                , self.decel_limit, self.accel_limit)
+        self.velocity_pid = PID(kp=3., ki=0, kd=0. #3., 0, 0.0001
+                , mn=self.decel_limit, mx=self.accel_limit)
+        self.velocity_lowpass = LowPassFilter(tau = 0.001, ts = 0.02)
 
         self.wheel_base = kwargs['wheel_base'] # yaw
         self.steer_ratio = kwargs['steer_ratio'] # yaw
@@ -31,6 +33,7 @@ class Controller(object):
         self.yaw_controller = YawController(
                 self.wheel_base, self.steer_ratio, self.min_speed
                 , self.max_lat_accel, self.max_steer_angle)
+        self.yaw_lowpass = LowPassFilter(tau = 0.001, ts = 0.02)
 
         self.last_time = rospy.get_time()
 
@@ -46,9 +49,11 @@ class Controller(object):
         self.last_time = curr_time
         error = proposed_linear_velocity - current_linear_velocity
         accel = self.velocity_pid.step(error, sample_time)
+        accel = self.velocity_lowpass.filt(accel)
 
         steer = self.yaw_controller.get_steering(proposed_linear_velocity
             , proposed_angular_velocity, current_linear_velocity)
+        steer = self.yaw_lowpass.filt(steer)
 
         # accelerate
         if accel > 0.:
