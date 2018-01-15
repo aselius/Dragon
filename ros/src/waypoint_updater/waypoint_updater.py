@@ -49,6 +49,8 @@ class WaypointUpdater(object):
         self.last_stop_line_wp_idx = -1
         self.max_updated_wp_idx = -1
         self.stop_line_buffer = 5
+        self.has_traffic_waypoint = False
+        self.waypoint_velocity_updated = False
 
         rospy.loginfo('required_vel=%s, decel_limit=%s'
             , self.required_velocity, self.decel_limit)
@@ -80,24 +82,6 @@ class WaypointUpdater(object):
         #rospy.loginfo('current: x=%s, vel=%s'
         #    , self.pose.position.x, self.current_velocity)
 
-    def waypoints_cb(self, msg):
-        # Lane {header, waypoints[]}
-        # Waypoint {
-        #   twist {header, twist {linear {x, y, z}, angular {x, y, z}}}
-        #  , pose {header, pose {position {x, y, z}, orientation {x, y, z, w}}}}
-        # }
-        rospy.logdebug('waypoints_cb: len=%s', len(msg.waypoints))
-        self.base_waypoints = msg.waypoints
-
-    def traffic_waypoint_cb(self, msg):
-        # DONE: Callback for /traffic_waypoint message. Implement
-
-        self.stop_line_wp_idx = msg.data
-
-        if not self.base_waypoints or not self.pose:
-            #rospy.logdebug('base_waypoints == [] or self.pose == None')
-            return
-
         if not self.dbw_enabled:
             # to make full search for closest next waypoint,
             # when dbw control comes back
@@ -105,21 +89,16 @@ class WaypointUpdater(object):
             return
 
         # find next_waypoint considering car's yaw
-        x = self.pose.position.x
-        y = self.pose.position.y
-        quarternion = (self.pose.orientation.x
-                    , self.pose.orientation.y
-                    , self.pose.orientation.z
-                    , self.pose.orientation.w)
-        euler = tf.transformations.euler_from_quaternion(quarternion)
+        next_wp_idx = self.find_next_waypoint()
+        if next_wp_idx == -1:
+            return
 
-        next_wp_idx = waypoint_util.next_waypoint(
-                x, y, euler[2], self.base_waypoints, self.last_next_wp_idx)
-
-
-        # to make stop a little before the stop line
-        if self.stop_line_wp_idx >= self.stop_line_buffer:
-            self.stop_line_wp_idx -= self.stop_line_buffer
+        # if it's the same as before, it doesn't need to publish
+        if next_wp_idx == self.last_next_wp_idx:
+            if self.last_stop_line_wp_idx == self.stop_line_wp_idx:
+                # test lot has no traffic_waypoint
+                if self.has_traffic_waypoint:
+                    return
 
         # if the line to stop has been changed,
         # we need to update velocity of the waypoints
@@ -151,42 +130,24 @@ class WaypointUpdater(object):
                 self.update_waypoints_for_drive(next_wp_idx)
                 rospy.loginfo('update: car(%s) went past stop_line(%s)'
                     , next_wp_idx, self.stop_line_wp_idx)
-        # no need to update velocity 
-        # then check it's the same as before
-        elif (next_wp_idx == self.last_next_wp_idx and
-            self.last_next_wp_idx != -1):
-            return
+
+        self.publish_final_waypoints(next_wp_idx)
+
+    def waypoints_cb(self, msg):
+        # Lane {header, waypoints[]}
+        # Waypoint {
+        #   twist {header, twist {linear {x, y, z}, angular {x, y, z}}}
+        #  , pose {header, pose {position {x, y, z}, orientation {x, y, z, w}}}}
+        # }
+        rospy.logdebug('waypoints_cb: len=%s', len(msg.waypoints))
+        self.base_waypoints = msg.waypoints
 
 
-        self.last_next_wp_idx = next_wp_idx
-        end_wp_idx = min(next_wp_idx + LOOKAHEAD_WPS
-            , len(self.base_waypoints))
+    def traffic_waypoint_cb(self, msg):
+        # DONE: Callback for /traffic_waypoint message. Implement
+        self.has_traffic_waypoint = True
+        self.stop_line_wp_idx = msg.data
 
-        lane = Lane()
-        lane.header.frame_id = '/updater'
-        lane.header.stamp = rospy.get_rostime()
-        waypoints = []
-        for i in range(next_wp_idx, end_wp_idx):
-            waypoints.append(self.base_waypoints[i])
-            '''
-            if self.last_stop_line_wp_idx != self.stop_line_wp_idx:
-                rospy.loginfo('updated vel: x=%s, vel=%s'
-                    , self.base_waypoints[i].pose.pose.position.x
-                    , self.base_waypoints[i].twist.twist.linear.x)
-            '''
-        '''
-        if self.last_stop_line_wp_idx == self.stop_line_wp_idx:
-            rospy.loginfo('no updated vel: from %s,%s to %s,%s'
-                    , self.base_waypoints[next_wp_idx].pose.pose.position.x
-                    , self.base_waypoints[next_wp_idx].twist.twist.linear.x
-                    , self.base_waypoints[end_wp_idx].pose.pose.position.x
-                    , self.base_waypoints[end_wp_idx].twist.twist.linear.x)
-        '''
-
-        lane.waypoints = waypoints
-        self.final_waypoints_pub.publish(lane)
-
-        self.last_stop_line_wp_idx = self.stop_line_wp_idx
 
     def update_waypoints_for_drive(self, next_wp_idx):
         if next_wp_idx < self.max_updated_wp_idx:
@@ -196,20 +157,64 @@ class WaypointUpdater(object):
         return
 
     def update_waypoints_for_stop(self, next_wp_idx, decel):
-        for i in range(next_wp_idx, self.stop_line_wp_idx):
-            dist = self.distance(self.base_waypoints, i, self.stop_line_wp_idx)
+        # to make stop a little before the stop line
+        if self.stop_line_wp_idx >= self.stop_line_buffer:
+            stop_line_wp_idx = self.stop_line_wp_idx - self.stop_line_buffer
+
+        for i in range(next_wp_idx, stop_line_wp_idx):
+            dist = self.distance(self.base_waypoints, i, stop_line_wp_idx)
             dist = max(0., dist)
             stopping_vel = math.sqrt(2*decel*dist)
             stopping_vel = min(stopping_vel, self.required_velocity)
-            stopping_vel = min(stopping_vel, self.current_velocity)
+            #stopping_vel = min(stopping_vel, self.current_velocity)
             self.set_waypoint_velocity(self.base_waypoints, i, stopping_vel)
 
         # update by zero speed padding
-        for i in range(self.stop_line_wp_idx
-                    , self.stop_line_wp_idx + self.zero_padding_wps):
+        for i in range(stop_line_wp_idx
+                    , stop_line_wp_idx + self.zero_padding_wps):
             self.set_waypoint_velocity(self.base_waypoints, i, 0.)
 
-        self.max_updated_wp_idx = self.stop_line_wp_idx + self.zero_padding_wps
+        self.max_updated_wp_idx = stop_line_wp_idx + self.zero_padding_wps
+
+    def publish_final_waypoints(self, next_wp_idx):
+        end_wp_idx = min(next_wp_idx + LOOKAHEAD_WPS
+            , len(self.base_waypoints)) - 1
+
+        lane = Lane()
+        lane.header.frame_id = '/updater'
+        lane.header.stamp = rospy.get_rostime()
+        waypoints = []
+        for i in range(next_wp_idx, end_wp_idx + 1):
+            waypoints.append(self.base_waypoints[i])
+            #'''
+            if self.waypoint_velocity_updated:
+                rospy.loginfo('updated vel: x=%s, vel=%s'
+                    , self.base_waypoints[i].pose.pose.position.x
+                    , self.base_waypoints[i].twist.twist.linear.x)
+            #'''
+
+        lane.waypoints = waypoints
+        self.final_waypoints_pub.publish(lane)
+        self.last_next_wp_idx = next_wp_idx
+        self.last_stop_line_wp_idx = self.stop_line_wp_idx
+        self.waypoint_velocity_updated = False
+
+    def find_next_waypoint(self):
+        if not self.pose or not self.base_waypoints:
+            return -1
+
+        x = self.pose.position.x
+        y = self.pose.position.y
+        quarternion = (self.pose.orientation.x
+                    , self.pose.orientation.y
+                    , self.pose.orientation.z
+                    , self.pose.orientation.w)
+        euler = tf.transformations.euler_from_quaternion(quarternion)
+
+        next_wp_idx = waypoint_util.next_waypoint(
+                x, y, euler[2], self.base_waypoints, self.last_next_wp_idx)
+
+        return next_wp_idx
 
     def obstacle_cb(self, msg):
         # LATER: Callback for /obstacle_waypoint message. We will implement it later
@@ -219,6 +224,7 @@ class WaypointUpdater(object):
         return waypoint.twist.twist.linear.x
 
     def set_waypoint_velocity(self, waypoints, waypoint, velocity):
+        self.waypoint_velocity_updated = True
         waypoints[waypoint].twist.twist.linear.x = velocity
 
     def distance(self, waypoints, wp1, wp2):
