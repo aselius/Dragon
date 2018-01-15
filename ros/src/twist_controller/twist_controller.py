@@ -30,11 +30,11 @@ class Controller(object):
 					    kwargs['min_speed'], kwargs['max_lat_accel'],
 					    kwargs['max_steer_angle'])
 
-	self.pid = PID(3, 0, 0.001, self.decel_limit, self.accel_limit);
-        self.tau_correction = 0.2
-        self.ts_correction = 0.1
+	self.velocity_pid = PID(3, 0, 0.001, self.decel_limit, self.accel_limit)
+	self.tau_correction = 0.2
+	self.ts_correction = 0.1
 	
-	self.low_pass_filter = LowPassFilter(self.tau_correction, self.ts_correction)
+	self.velocity_lowpass = LowPassFilter(self.tau_correction, self.ts_correction)
 
 	# NOTE(aselius): I believe this is just 50hz, but should be fine for now..
 	# self.sample_time = 1.0/50; # 50 Hz
@@ -52,8 +52,8 @@ class Controller(object):
         sample_time = curr_time - self.last_time
         self.last_time = curr_time
         error = proposed_linear_velocity - current_linear_velocity
-        accel = self.pid.step(error, sample_time)
-        accel = self.lowpass_pass_filter.filt(accel)
+        accel = self.velocity_pid.step(error, sample_time)
+        accel = self.velocity_lowpass.filt(accel)
 
         steer = self.yaw_controller.get_steering(proposed_linear_velocity,
 						 proposed_angular_velocity,
