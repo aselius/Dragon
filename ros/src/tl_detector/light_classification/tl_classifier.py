@@ -21,6 +21,8 @@ class TLClassifier(object):
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
+            # for JIT optimization
+            config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
             self.sess = tf.Session(graph=detection_graph, config=config) 
             # Definite input and output Tensors for detection_graph
             self.image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
@@ -81,7 +83,7 @@ class TLClassifier(object):
         '''
         ID = self.class_to_ID(np.squeeze(classes)[0])
         score = np.squeeze(scores)[0]
-        rospy.loginfo('light_classifier: color=%s, prob=%s', ID, score)
+        #rospy.loginfo('light_classifier: color=%s, prob=%s', ID, score)
 
         if score > 0.5:
             return ID
