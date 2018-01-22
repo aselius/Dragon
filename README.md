@@ -1,5 +1,73 @@
 # Carla Self Driving Car System Integration Project
 ## Team Dragon
+Name | Email
+-----|------
+Waleed Mansoor | waleed.mansoor@gmail.com
+Jaewoo Park	| jaewoopark91@gmail.com
+Sasha Jaksic | dzx303@gmail.com	
+Dominik Marquardt	| dominik.marquardt@outlook.de	
+Juil O | horagong@gmail.com
+
+
+## System Architecture
+This system has three main parts.
+<div align=center>
+<img src=imgs/final-project-ros-graph-v2.png>
+</div>
+
+### Perception
+The main role of this part is detecting the traffic light and publishing '/traffic_waypoint' topic so that the next planning part can generate an appropiate trajectory.
+<div align=center>
+<img src=imgs/tl-detector-ros-graph.png>
+</div>
+
+For this, we trained the pre-trained classifier using some dataset. The pre-trained graph is [ssd_mobilenet_v1_coco](http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_2017_11_17.tar.gz)
+
+We used images from ROS topics of simulator and bag files as training dataset. We can see these images following commmands.
+```
+roslaunch launch/styx.launch
+rosrun image_view image_view _sec_pre_frame:=0.1 image:=/image_color
+
+rosbag play just_traffic_light.bag
+rosrun image_view image_view image:=/image_raw
+```
+And then that can be saved with this command.
+```
+rosrun image_view image_saver _sec_per_frame:=0.1 image:=/image_raw
+```
+The waypoint to be stopped at when the light is red is provided by stop_line_positions config. So the classifier tries to find a traffic light when the car comes near the closests stop_line.
+```
+# find the closest visible traffic light (if one exists)
+min_dist = 100000
+for stop_line_wp_idx in self.stop_line_wp_idxs:
+    dist = stop_line_wp_idx - self.car_wp_idx
+    if dist >= 0 and dist < min_dist:
+        min_dist = dist
+        if min_dist < self.visible_distance_wps:
+            # It uses the stop_line postion rather than the traffic light position
+            light_wp = stop_line_wp_idx
+
+# If there is a visible traffic light
+if light_wp != -1:
+    # if camera is on: through classifier
+    if self.has_image:
+        state = self.get_light_state(light_wp)
+        return light_wp, state
+    # if camera is off: through ground truth
+    else:
+```
+
+### Planning
+<div align=center>
+<img src=imgs/waypoint-updater-ros-graph.png>
+</div>
+
+### Control
+<div align=center>
+<img src=imgs/dbw-node-ros-graph.png>
+</div>
+
+
 
 ### Installation
 It is probably easiest to install ROS and deploy everything with Docker, and although you could use the VM provided by Udacity [here](https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/Udacity_VM_Base_V1.0.0.zip), it is recommended to deploy using Docker.

@@ -12,6 +12,8 @@ class TLClassifier(object):
         path_to_ckpt = os.path.join('..', 'data', 'udacity_frozen_inference_graph.pb')
         self.count = 0
         detection_graph = tf.Graph()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
         with detection_graph.as_default():
             od_graph_def = tf.GraphDef()
             with tf.gfile.GFile(path_to_ckpt, 'rb') as fid:
@@ -19,7 +21,9 @@ class TLClassifier(object):
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
-            self.sess = tf.Session(graph=detection_graph) 
+            # for JIT optimization
+            config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+            self.sess = tf.Session(graph=detection_graph, config=config) 
             # Definite input and output Tensors for detection_graph
             self.image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
             # Each box represents a part of the image where a particular object was detected.
@@ -79,7 +83,7 @@ class TLClassifier(object):
         '''
         ID = self.class_to_ID(np.squeeze(classes)[0])
         score = np.squeeze(scores)[0]
-        rospy.loginfo('light_classifier: color=%s, prob=%s', ID, score)
+        #rospy.loginfo('light_classifier: color=%s, prob=%s', ID, score)
 
         if score > 0.5:
             return ID
